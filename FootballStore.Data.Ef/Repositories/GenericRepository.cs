@@ -6,16 +6,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FootballStore.Data.Ef.Specifications; // <-- НОВИЙ USING
 
 namespace FootballStore.Data.Ef.Repositories
 {
-    // Асинхронний Generic Repository (1.00 бал)
     public class GenericRepository<TEntity> : IGenericRepository<TEntity> where TEntity : class
     {
         protected readonly ApplicationDbContext _context;
         protected readonly DbSet<TEntity> DbSet;
 
-        public ApplicationDbContext Context => _context; // DbContext для Linq to Entities (JOIN)
+        public ApplicationDbContext Context => _context; 
 
         public GenericRepository(ApplicationDbContext context)
         {
@@ -23,7 +23,7 @@ namespace FootballStore.Data.Ef.Repositories
             DbSet = _context.Set<TEntity>();
         }
         
-        // Реалізація Eager/Explicit Loading (2.00 балів)
+        // Метод для Eager/Explicit Loading (Вже реалізовано)
         public async Task<IEnumerable<TEntity>> GetAllAsync(
             Expression<Func<TEntity, bool>>? filter = null,
             Func<IQueryable<TEntity>, IIncludableQueryable<TEntity, object>>? include = null,
@@ -38,18 +38,26 @@ namespace FootballStore.Data.Ef.Repositories
 
             if (include != null)
             {
-                // Застосування .Include() для Eager Loading
                 query = include(query);
             }
             
-            // Async Generic Repository з базовими методами
             return await query.AsNoTracking().ToListAsync(cancellationToken);
         }
 
-        // --- Базовий CRUD ---
+        // МЕТОД ДЛЯ ФІЛЬТРАЦІЇ ЧЕРЕЗ СПЕЦИФІКАЦІЮ (1.00 бал)
+        public async Task<IEnumerable<TEntity>> GetBySpecificationAsync(
+            ISpecification<TEntity> specification,
+            CancellationToken cancellationToken = default)
+        {
+            // Застосовуємо критерій фільтрації
+            IQueryable<TEntity> query = DbSet.Where(specification.Criteria);
+            
+            return await query.AsNoTracking().ToListAsync(cancellationToken);
+        }
+
+        // --- Базовий CRUD (Вже реалізовано) ---
         public async Task<TEntity?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
         {
-            // Використовуємо FindAsync, який шукає в кеші та БД
             return await DbSet.FindAsync(new object[] { id }, cancellationToken);
         }
 
@@ -61,7 +69,6 @@ namespace FootballStore.Data.Ef.Repositories
         public async Task Update(TEntity entity)
         {
             DbSet.Update(entity);
-            // SaveChangesAsync буде викликано зовнішнім сервісом (UoW pattern)
             await Task.CompletedTask;
         }
 

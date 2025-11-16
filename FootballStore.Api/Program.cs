@@ -8,15 +8,14 @@ using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.OpenApi;
 using Serilog;
+using Serilog.Enrichers;
 using Serilog.Events;
 using System.Reflection;
 
-// --- Налаштування Serilog (Повне Логування) ---
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()                     // Мінімальний рівень логування
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning) // менше шуму від Microsoft
-    .Enrich.FromLogContext()                        // додає контекст запиту, корисно для структурованих логів
-    .Enrich.WithThreadId()                          // додає ThreadId
+    .Enrich.WithMachineName()                       // додає ім'я машини
     .Enrich.WithMachineName()                       // додає ім'я машини
     .Enrich.WithEnvironmentName()                  // додає середовище (Development/Production)
     .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties}{NewLine}{Exception}") // консоль
