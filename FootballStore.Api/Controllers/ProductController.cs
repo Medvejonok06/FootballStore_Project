@@ -1,6 +1,13 @@
-using FootballStore.Data.Ado;
-using FootballStore.Data.Ado.Models;
+using MediatR;
+using FootballStore.Services.DTOs;
 using Microsoft.AspNetCore.Mvc;
+
+// ВИПРАВЛЕНО: Видаляємо using, які викликають CS0234:
+// using FootballStore.Services.Features.Products.Queries;
+// using FootballStore.Services.Features.Products.Commands;
+
+// Тепер ми будемо використовувати повні імена класів або додавати коректні using,
+// якщо ви не створили GetProductByIdQuery.
 
 namespace FootballStore.Api.Controllers
 {
@@ -8,101 +15,53 @@ namespace FootballStore.Api.Controllers
     [Route("api/[controller]")]
     public class ProductController : ControllerBase
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IMediator _mediator;
 
-        // Впровадження залежностей (UoW)
-        public ProductController(IUnitOfWork unitOfWork)
+        public ProductController(IMediator mediator)
         {
-            _unitOfWork = unitOfWork;
+            _mediator = mediator;
         }
 
-        // GET api/Product (Асинхронність + CancellationToken - 1.00 балів)
+        // GET api/Product (ЧИТАННЯ - Query)
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        public async Task<ActionResult<IEnumerable<Product>>> GetAllProducts(CancellationToken cancellationToken)
+        public async Task<ActionResult<IEnumerable<ProductDto>>> GetAllProducts(CancellationToken cancellationToken)
         {
-            var products = await _unitOfWork.Products.GetAllAsync(cancellationToken);
-            return Ok(products); // 200 OK
+            // Використовуємо повне ім'я класу, щоб компілятор його знайшов
+            var query = new FootballStore.Services.Features.Products.Queries.GetAllProductsQuery(); 
+            var products = await _mediator.Send(query, cancellationToken); 
+            return Ok(products); 
         }
 
-        // GET api/Product/5
-        [HttpGet("{id}")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<ActionResult<Product>> GetProductById(int id, CancellationToken cancellationToken)
-        {
-            var product = await _unitOfWork.Products.GetByIdAsync(id, cancellationToken);
-            
-            if (product == null)
-            {
-                // Повертаємо 404 Not Found
-                return NotFound(); 
-            }
-            
-            // Повертаємо 200 OK
-            return Ok(product);
-        }
-
-        // POST api/Product
+        // POST api/Product (ЗАПИС - Command)
         [HttpPost]
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<ActionResult<Product>> CreateProduct([FromBody] Product product, CancellationToken cancellationToken)
+        public async Task<ActionResult<ProductDto>> CreateProduct([FromBody] ProductCreateDto dto, CancellationToken cancellationToken)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState); // 400 Bad Request
-            }
-
-            try
-            {
-                // Додавання до БД
-                var id = await _unitOfWork.Products.AddAsync(product, cancellationToken);
-                product.Id = id;
-                
-                // Фіксація транзакції
-                await _unitOfWork.CommitAsync(); 
-
-                // Повертаємо 201 Created
-                return CreatedAtAction(nameof(GetProductById), new { id = product.Id }, product);
-            }
-            catch (Exception ex)
-            {
-                // У разі помилки, UoW відкатить транзакцію під час Dispose
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message); 
-            }
+            // Використовуємо повне ім'я класу
+            var command = new FootballStore.Services.Features.Products.Commands.CreateProductCommand { Dto = dto };
+            
+            var productDto = await _mediator.Send(command, cancellationToken); 
+            
+            return CreatedAtAction(nameof(GetProductById), new { id = productDto.Id }, productDto);
         }
         
-        // PUT api/Product/5
-        [HttpPut("{id}")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        // GET api/Product/5 (Демонстрація Query для одного об'єкта)
+        [HttpGet("{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<ActionResult> UpdateProduct(int id, [FromBody] Product product, CancellationToken cancellationToken)
+        public async Task<ActionResult<ProductDto>> GetProductById(int id, CancellationToken cancellationToken)
         {
-            if (id != product.Id)
+            // Використовуємо повне ім'я класу
+            var query = new FootballStore.Services.Features.Products.Queries.GetProductByIdQuery { Id = id };
+            var product = await _mediator.Send(query, cancellationToken);
+            
+            if (product == null)
             {
-                return BadRequest();
+                return NotFound();
             }
-
-            try
-            {
-                var updated = await _unitOfWork.Products.UpdateAsync(product, cancellationToken);
-                
-                if (!updated)
-                {
-                    await _unitOfWork.RollbackAsync();
-                    return NotFound(); // 404, якщо товар не знайдено
-                }
-
-                await _unitOfWork.CommitAsync();
-                
-                return NoContent(); // 204 No Content
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
-            }
+            return Ok(product);
         }
     }
 }
