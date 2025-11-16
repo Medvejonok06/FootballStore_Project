@@ -7,60 +7,95 @@ using Microsoft.EntityFrameworkCore;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.OpenApi;
+using Serilog;
+using Serilog.Events;
+using System.Reflection;
 
-var builder = WebApplication.CreateBuilder(args);
+// --- Налаштування Serilog (Повне Логування) ---
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()                     // Мінімальний рівень логування
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning) // менше шуму від Microsoft
+    .Enrich.FromLogContext()                        // додає контекст запиту, корисно для структурованих логів
+    .Enrich.WithThreadId()                          // додає ThreadId
+    .Enrich.WithMachineName()                       // додає ім'я машини
+    .Enrich.WithEnvironmentName()                  // додає середовище (Development/Production)
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties}{NewLine}{Exception}") // консоль
+    .WriteTo.File(
+        path: "logs/footballstore-.log",          // файл для логів
+        rollingInterval: RollingInterval.Day,     // щоденна ротація
+        retainedFileCountLimit: 7,                // зберігати 7 днів
+        outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {Message:lj} {Properties}{NewLine}{Exception}"
+    )
+    .CreateLogger();
 
-// --- Конфігурація EF Core та PostgreSQL ---
-var connectionString = builder.Configuration.GetConnectionString("PostgresConnection") ??
-                       "Host=localhost;Database=football_db_ef;Username=postgres;Password=12345";
-
-// --- Реєстрація Сервісів ---
-builder.Services.AddControllers();
-
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
+try
 {
-    // OpenApiInfo тепер знайдено завдяки using Microsoft.OpenApi.Models
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Football Store API (EF Core)", Version = "v1" });
-});
+    Log.Information("Запуск Football Store API...");
 
-// 1. EF Core DbContext
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    var builder = WebApplication.CreateBuilder(args);
 
-// 2. AutoMapper
-builder.Services.AddAutoMapper(typeof(ProductProfile).Assembly);
+    // Підключення Serilog до ASP.NET Core
+    builder.Host.UseSerilog();
 
-// 3. FluentValidation
-builder.Services.AddFluentValidationAutoValidation();
-builder.Services.AddValidatorsFromAssembly(typeof(ProductCreateDtoValidator).Assembly);
+    // --- Конфігурація EF Core та PostgreSQL ---
+    var connectionString = builder.Configuration.GetConnectionString("PostgresConnection") ??
+                           "Host=localhost;Database=football_db_ef;Username=postgres;Password=12345";
 
-// 4. Реєстрація Repositories та Services
-builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
-builder.Services.AddScoped<IProductService, ProductService>();
+    // --- Реєстрація сервісів ---
+    builder.Services.AddControllers();
 
+    // Swagger/OpenAPI
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen(c =>
+    {
+        c.SwaggerDoc("v1", new OpenApiInfo { Title = "Football Store API (EF Core)", Version = "v1" });
+    });
 
-var app = builder.Build();
+    // EF Core DbContext
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseNpgsql(connectionString));
 
-// --- Автоматичне застосування міграцій ---
-using (var scope = app.Services.CreateScope())
-{
-    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    context.Database.Migrate(); 
+    // AutoMapper
+    builder.Services.AddAutoMapper(typeof(ProductProfile).Assembly);
+
+    // FluentValidation
+    builder.Services.AddFluentValidationAutoValidation();
+    builder.Services.AddValidatorsFromAssembly(typeof(ProductCreateDtoValidator).Assembly);
+
+    // Repositories та Services
+    builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
+    builder.Services.AddScoped<IProductService, ProductService>();
+
+    var app = builder.Build();
+
+    // --- Автоматичне застосування міграцій ---
+    using (var scope = app.Services.CreateScope())
+    {
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        context.Database.Migrate();
+    }
+
+    // --- Middleware ---
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseSwagger();
+        app.UseSwaggerUI();
+    }
+    else
+    {
+        app.UseExceptionHandler("/error");
+    }
+
+    app.UseAuthorization();
+    app.MapControllers();
+
+    app.Run();
 }
-
-// --- Централізована обробка помилок (ProblemDetails) ---
-if (app.Environment.IsDevelopment())
+catch (Exception ex)
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    Log.Fatal(ex, "Програма завершилася з фатальною помилкою");
 }
-else
+finally
 {
-    app.UseExceptionHandler("/error");
+    Log.CloseAndFlush();
 }
-
-app.UseAuthorization();
-app.MapControllers();
-
-app.Run();
