@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FootballStore.Data.Ef.Specifications; // <-- НОВИЙ USING
+using FootballStore.Data.Ef.Specifications;
 
 namespace FootballStore.Data.Ef.Repositories
 {
@@ -23,7 +23,7 @@ namespace FootballStore.Data.Ef.Repositories
             DbSet = _context.Set<TEntity>();
         }
         
-        // Метод для Eager/Explicit Loading (Вже реалізовано)
+        // --- Реалізація Eager/Explicit Loading ---
         public async Task<IEnumerable<TEntity>> GetAllAsync(
             Expression<Func<TEntity, bool>>? filter = null,
             Func<IQueryable<TEntity>, IIncludableQueryable<TEntity, object>>? include = null,
@@ -38,24 +38,25 @@ namespace FootballStore.Data.Ef.Repositories
 
             if (include != null)
             {
+                // Застосування .Include() для Eager Loading
                 query = include(query);
             }
             
             return await query.AsNoTracking().ToListAsync(cancellationToken);
         }
 
-        // МЕТОД ДЛЯ ФІЛЬТРАЦІЇ ЧЕРЕЗ СПЕЦИФІКАЦІЮ (1.00 бал)
+        // --- МЕТОД ДЛЯ ФІЛЬТРАЦІЇ ЧЕРЕЗ СПЕЦИФІКАЦІЮ (1.00 бал) ---
         public async Task<IEnumerable<TEntity>> GetBySpecificationAsync(
             ISpecification<TEntity> specification,
             CancellationToken cancellationToken = default)
         {
-            // Застосовуємо критерій фільтрації
+            // Застосовуємо критерій фільтрації з об'єкта специфікації
             IQueryable<TEntity> query = DbSet.Where(specification.Criteria);
             
             return await query.AsNoTracking().ToListAsync(cancellationToken);
         }
 
-        // --- Базовий CRUD (Вже реалізовано) ---
+        // --- Базовий CRUD ---
         public async Task<TEntity?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
         {
             return await DbSet.FindAsync(new object[] { id }, cancellationToken);

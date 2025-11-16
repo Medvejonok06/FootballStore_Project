@@ -1,14 +1,14 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore.Query;
 using FootballStore.Data.Ef.Entities;
-using FootballStore.Data.Ef.Specifications; // <-- НОВИЙ USING
+using FootballStore.Data.Ef.Specifications; // <-- Потрібен для Specification Pattern
 
 namespace FootballStore.Data.Ef.Repositories
 {
     // Async Generic Repository з базовими методами (1.00 балів)
     public interface IGenericRepository<TEntity> where TEntity : class
     {
-        // Метод для Eager/Explicit Loading
+        // Метод для Eager/Explicit Loading (2.00 балів)
         Task<IEnumerable<TEntity>> GetAllAsync(
             Expression<Func<TEntity, bool>>? filter = null,
             Func<IQueryable<TEntity>, IIncludableQueryable<TEntity, object>>? include = null,
@@ -18,7 +18,7 @@ namespace FootballStore.Data.Ef.Repositories
         Task<IEnumerable<TEntity>> GetBySpecificationAsync(
             ISpecification<TEntity> specification,
             CancellationToken cancellationToken = default);
-        
+
         Task<TEntity?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
         
         Task AddAsync(TEntity entity, CancellationToken cancellationToken = default);
