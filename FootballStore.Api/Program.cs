@@ -1,46 +1,64 @@
-using FootballStore.Data.Ado;
-using FootballStore.Data.Ado.Repositories;
-using Npgsql;
+using FootballStore.Data.Ef;
+using FootballStore.Data.Ef.Repositories;
+using FootballStore.Services;
+using FootballStore.Services.Mapping;
+using FootballStore.Services.Validation;
+using Microsoft.EntityFrameworkCore;
+using FluentValidation;
+using FluentValidation.AspNetCore;
 using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- Конфігурація для PostgreSQL ---
-// Оскільки ми використовуємо ADO.NET, нам потрібен тільки рядок підключення.
-// Встановіть свій пароль
-var connectionString = builder.Configuration.GetConnectionString("PostgresConnection") ?? 
-"Host=localhost;Database=football_db;Username=postgres;Password=12345";
+// --- Конфігурація EF Core та PostgreSQL ---
+var connectionString = builder.Configuration.GetConnectionString("PostgresConnection") ??
+                       "Host=localhost;Database=football_db_ef;Username=postgres;Password=12345";
 
-// --- Реєстрація Сервісів (IoC) ---
+// --- Реєстрація Сервісів ---
 builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
 
-// 1. Swagger/OpenAPI документація (0.50 балів)
+builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-c.SwaggerDoc("v1", new OpenApiInfo { Title = "Football Store API (ADO.NET + Dapper)", Version = "v1" });
+    // OpenApiInfo тепер знайдено завдяки using Microsoft.OpenApi.Models
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Football Store API (EF Core)", Version = "v1" });
 });
 
-// 2. Реєстрація Unit of Work як Scoped Service
-builder.Services.AddScoped<IUnitOfWork>(provider => new UnitOfWork(connectionString));
+// 1. EF Core DbContext
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseNpgsql(connectionString));
 
-// Видаляємо стандартний контролер
-// builder.Services.AddSingleton<FootballStore.Api.WeatherForecastController>();
+// 2. AutoMapper
+builder.Services.AddAutoMapper(typeof(ProductProfile).Assembly);
+
+// 3. FluentValidation
+builder.Services.AddFluentValidationAutoValidation();
+builder.Services.AddValidatorsFromAssembly(typeof(ProductCreateDtoValidator).Assembly);
+
+// 4. Реєстрація Repositories та Services
+builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
+builder.Services.AddScoped<IProductService, ProductService>();
 
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// --- Автоматичне застосування міграцій ---
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    context.Database.Migrate(); 
+}
+
+// --- Централізована обробка помилок (ProblemDetails) ---
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Football Store API V1");
-    });
+    app.UseSwaggerUI();
 }
-
-// app.UseHttpsRedirection(); // Зазвичай вимикаємо для локальної розробки
+else
+{
+    app.UseExceptionHandler("/error");
+}
 
 app.UseAuthorization();
 app.MapControllers();
